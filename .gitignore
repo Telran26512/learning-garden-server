@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local agent workflow artifacts
+docs/superpowers/
+
+# Go build and test artifacts
+bin/
+*.test
+coverage.out
+
+# Logs
+*.log
+logs/
