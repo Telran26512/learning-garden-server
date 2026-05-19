@@ -9,9 +9,11 @@ This repository owns the backend API scaffold, local infrastructure, persistence
 
 ## Current Status
 
-P0 is scaffolded:
+P0 is scaffolded and P1 identity/session work is in progress:
 
 - `services/api` runs the Go API with `/healthz`.
+- P1 auth endpoints are implemented: register, login, refresh, logout, and current user.
+- `users` migration and SQL query source files are present under `services/api/db`.
 - `docker-compose.yml` starts Postgres with pgvector, Redis, and MinIO.
 - `Makefile` and GitHub Actions provide backend development and CI commands.
 - The landing page stays in the separate [`learning-garden-web`](https://github.com/Telran26512/learning-garden-web) repository.
@@ -23,15 +25,15 @@ Backend P0 is considered ready when these checks pass from this repository:
 ```bash
 go test ./...
 go run ./services/api/cmd/server
-curl http://localhost:8080/healthz
+curl http://localhost:18080/healthz
 docker compose up -d
 docker compose ps
 ```
 
-Expected `/healthz` response:
+Expected `/healthz` response shape:
 
 ```json
-{"status":"ok"}
+{"data":{"ok":true},"error":null,"meta":{}}
 ```
 
 The frontend acceptance item is verified from the dedicated frontend repository:
@@ -67,7 +69,7 @@ It is not responsible for:
 | --- | --- |
 | Language | Go 1.22+ |
 | Architecture | Modular monolith |
-| HTTP routing | P0 uses `net/http`; chi can be introduced when routes grow |
+| HTTP routing | chi |
 | Database | PostgreSQL 16 with pgvector |
 | Cache / queue foundation | Redis 7 |
 | Object storage | S3-compatible storage; MinIO for local development |
@@ -82,8 +84,13 @@ learning-garden-server/
 |-- docker-compose.yml
 |-- Makefile
 |-- services/api/
+|   |-- cmd/migrate/      # SQL migration runner
 |   |-- cmd/server/       # HTTP server entry point
-|   `-- internal/httpserver/
+|   |-- db/migrations/    # Versioned SQL migrations
+|   |-- db/queries/       # SQL source files for sqlc
+|   |-- internal/auth/    # Password, token, session service
+|   |-- internal/httpapi/ # HTTP router and handlers
+|   `-- internal/repo/    # Postgres and Redis adapters
 |-- internal/
 |   |-- identity/         # Users, sessions, auth
 |   |-- content/          # Concepts, papers, notes, markdown content
@@ -113,21 +120,23 @@ learning-garden-server/
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` for local overrides. Default P0 values are:
+Copy `.env.example` to `.env` for local overrides. Default local values are:
 
 ```bash
-HTTP_ADDR=:8080
-CORS_ALLOWED_ORIGINS=http://localhost:3000
+HTTP_ADDR=:18080
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+JWT_SECRET=change-me-in-local-env
+COOKIE_SECURE=false
 
-POSTGRES_HOST_PORT=5432
+POSTGRES_HOST_PORT=15432
 POSTGRES_DB=learning_garden
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/learning_garden?sslmode=disable
+DATABASE_URL=postgres://postgres:postgres@localhost:15432/learning_garden?sslmode=disable
 
-REDIS_HOST_PORT=6380
-REDIS_ADDR=localhost:6380
-REDIS_URL=redis://localhost:6380/0
+REDIS_HOST_PORT=16379
+REDIS_ADDR=localhost:16379
+REDIS_URL=redis://localhost:16379/0
 
 MINIO_API_PORT=9000
 MINIO_CONSOLE_PORT=9001
@@ -148,11 +157,11 @@ Do not commit `.env` files. Commit `.env.example` when the scaffold introduces r
 
 | Service | Image | Host port | Purpose |
 | --- | --- | --- | --- |
-| Postgres | `pgvector/pgvector:pg16` | `5432` | Primary relational database and vector extension baseline |
-| Redis | `redis:7-alpine` | `6380` | Session/cache/queue foundation |
+| Postgres | `pgvector/pgvector:pg16` | `15432` | Primary relational database and vector extension baseline |
+| Redis | `redis:7-alpine` | `16379` | Session/cache/queue foundation |
 | MinIO | `minio/minio` | `9000`, `9001` | S3-compatible local object storage and console |
 
-Redis uses host port `6380` by default to avoid collisions with a locally installed Redis on `6379`. Change `REDIS_HOST_PORT` in `.env` if needed.
+Postgres and Redis use non-default host ports to avoid collisions with local services. Change `POSTGRES_HOST_PORT` or `REDIS_HOST_PORT` in `.env` if needed.
 
 ## Local Development
 
@@ -165,7 +174,8 @@ go run ./services/api/cmd/server
 Start local dependencies:
 
 ```bash
-docker compose up
+docker compose up -d
+make db:migrate
 ```
 
 Run checks:
@@ -174,7 +184,11 @@ Run checks:
 go test ./...
 ```
 
-Migration and sqlc commands will be finalized when the migration tool and sqlc configuration are committed. Until then, `make db:migrate` is a no-op placeholder.
+Run migrations after Postgres is healthy:
+
+```bash
+make db:migrate
+```
 
 ## Make Targets
 
@@ -182,7 +196,7 @@ Migration and sqlc commands will be finalized when the migration tool and sqlc c
 | --- | --- |
 | `make dev` | Start the API server |
 | `make api:dev` | Start the API server |
-| `make db:migrate` | Migration placeholder for P0 |
+| `make db:migrate` | Apply SQL migrations |
 | `make fmt` | Fail if Go files need formatting |
 | `make test` | Run `go test ./...` |
 | `make ci` | Run formatting and tests |
@@ -191,13 +205,16 @@ Migration and sqlc commands will be finalized when the migration tool and sqlc c
 
 ## API Endpoints
 
-P0 exposes one health endpoint:
+P1 exposes these endpoints:
 
 | Method | Path | Response |
 | --- | --- | --- |
-| `GET` | `/healthz` | `{"status":"ok"}` |
-
-Application endpoints will be added under `/api/v1`.
+| `GET` | `/healthz` | API envelope with `{ "ok": true }` |
+| `POST` | `/auth/register` | Session envelope and refresh cookie |
+| `POST` | `/auth/login` | Session envelope and refresh cookie |
+| `POST` | `/auth/refresh` | New access token using refresh cookie |
+| `POST` | `/auth/logout` | Revokes refresh token |
+| `GET` | `/auth/me` | Current user from Bearer access token |
 
 ## Frontend Development
 

@@ -7,7 +7,7 @@ api\:dev:
 	go run ./services/api/cmd/server
 
 db\:migrate:
-	@echo "No migrations to run yet"
+	cd services/api && go run ./cmd/migrate
 
 ci: fmt test
 
