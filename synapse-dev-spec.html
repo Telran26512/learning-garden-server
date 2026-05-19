@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Synapse 开发文档 · DEV SPEC</title>
+<style>
+  /* ============ 设计令牌 ============ */
+  :root{
+    --paper:#f4f0e6;
+    --paper-2:#ece6d6;
+    --panel:#fdfbf4;
+    --ink:#1c1b17;
+    --ink-2:#56524a;
+    --ink-3:#8d877b;
+    --line:#d8d0bd;
+    --line-soft:#e4ddcc;
+    --accent:#b14620;
+    --accent-ink:#8c3717;
+    --slate:#33485a;
+    --slate-2:#52677a;
+    --dark:#26241d;
+    --dark-2:#33302a;
+    --code-fg:#ddd6c4;
+    --ok:#3f6f4a;
+    --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+    --mono:"SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    font-family:var(--sans);
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.78;
+    -webkit-font-smoothing:antialiased;
+    font-size:16px;
+    background-image:radial-gradient(var(--line-soft) 1px,transparent 1px);
+    background-size:26px 26px;
+  }
+  ::selection{background:var(--accent);color:var(--paper);}
+
+  /* ============ 阅读进度 ============ */
+  .progress{position:fixed;top:0;left:0;right:0;height:3px;z-index:90;background:transparent;}
+  .progress__fill{
+    height:100%;background:var(--accent);
+    transform:scaleX(0);transform-origin:0 50%;
+    transition:transform .1s linear;
+  }
+
+  /* ============ 顶栏 ============ */
+  .topbar{
+    position:sticky;top:0;z-index:80;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:13px 30px;
+    background:rgba(244,240,230,.92);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .wordmark{
+    font-family:var(--mono);font-size:13px;font-weight:700;
+    letter-spacing:.32em;color:var(--ink);
+    display:flex;align-items:center;gap:9px;
+  }
+  .wordmark .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;display:inline-block;}
+  .topbar__meta{
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    color:var(--ink-3);text-transform:uppercase;
+  }
+
+  /* ============ 报头 ============ */
+  .masthead{
+    position:relative;overflow:hidden;
+    padding:74px 30px 56px;
+    border-bottom:2px solid var(--ink);
+    background:var(--paper-2);
+  }
+  .masthead__inner{max-width:1180px;margin:0 auto;position:relative;z-index:2;}
+  .eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--accent-ink);
+    display:flex;align-items:center;gap:12px;margin-bottom:22px;
+  }
+  .eyebrow::before{content:"";width:46px;height:2px;background:var(--accent);}
+  .masthead h1{
+    font-size:clamp(2.6rem,6vw,4.6rem);
+    line-height:1.04;letter-spacing:-.022em;font-weight:800;
+    max-width:14ch;
+  }
+  .masthead h1 em{font-style:normal;color:var(--accent);}
+  .masthead__lede{
+    margin-top:24px;max-width:60ch;font-size:1.06rem;
+    color:var(--ink-2);line-height:1.85;
+  }
+  /* 规格条 */
+  .specstrip{
+    margin-top:42px;display:flex;flex-wrap:wrap;
+    border:1px solid var(--ink);background:var(--panel);
+  }
+  .specstrip__cell{
+    flex:1 1 160px;padding:15px 20px;
+    border-right:1px solid var(--line);
+  }
+  .specstrip__cell:last-child{border-right:none;}
+  .specstrip__k{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-3);margin-bottom:5px;
+  }
+  .specstrip__v{font-size:.96rem;font-weight:700;}
+  .specstrip__v small{font-weight:500;color:var(--ink-2);font-size:.84rem;}
+  /* 神经元装饰 */
+  .synapse-deco{
+    position:absolute;top:-40px;right:-30px;width:430px;height:430px;
+    opacity:.5;pointer-events:none;z-index:1;
+  }
+
+  /* ============ 布局 ============ */
+  .layout{
+    max-width:1180px;margin:0 auto;
+    display:grid;grid-template-columns:248px 1fr;
+    gap:54px;padding:0 30px;
+  }
+
+  /* ============ 目录 ============ */
+  .toc{
+    position:sticky;top:74px;align-self:start;
+    padding:38px 0;max-height:calc(100vh - 74px);overflow-y:auto;
+  }
+  .toc__title{
+    font-family:var(--mono);font-size:11px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--ink-3);
+    margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--line);
+  }
+  .toc a{
+    display:flex;gap:11px;align-items:baseline;
+    padding:7px 11px;margin:1px 0;
+    text-decoration:none;color:var(--ink-2);
+    font-size:.9rem;border-left:2px solid transparent;
+    transition:background .15s,color .15s,border-color .15s;
+  }
+  .toc a:hover{background:var(--paper-2);color:var(--ink);}
+  .toc a .num{
+    font-family:var(--mono);font-size:.78rem;color:var(--ink-3);
+    flex-shrink:0;
+  }
+  .toc a.is-active{
+    background:var(--panel);color:var(--ink);font-weight:700;
+    border-left-color:var(--accent);
+  }
+  .toc a.is-active .num{color:var(--accent);}
+  .toc__foot{
+    margin-top:22px;padding-top:16px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:10.5px;color:var(--ink-3);
+    line-height:1.9;
+  }
+
+  /* ============ 正文 ============ */
+  .doc{padding:38px 0 90px;min-width:0;}
+  section{
+    padding-top:42px;margin-top:42px;
+    scroll-margin-top:88px;
+  }
+  section:first-child{margin-top:0;border-top:none;}
+  .sec-head{margin-bottom:30px;}
+  .sec-head__bar{
+    display:flex;align-items:center;gap:16px;margin-bottom:14px;
+  }
+  .sec-head__num{
+    font-family:var(--mono);font-size:1.05rem;font-weight:700;
+    color:var(--accent);letter-spacing:.04em;
+  }
+  .sec-head__rule{flex:1;height:1px;background:var(--line);}
+  .sec-head__tag{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.15em;
+    text-transform:uppercase;color:var(--ink-3);
+  }
+  .sec-head h2{
+    font-size:1.92rem;letter-spacing:-.018em;line-height:1.18;
+    font-weight:800;
+  }
+  .doc p{margin:14px 0;color:var(--ink-2);}
+  .doc p.lead{color:var(--ink);font-size:1.04rem;}
+  h3{
+    font-size:1.12rem;font-weight:800;margin:38px 0 14px;
+    display:flex;align-items:center;gap:10px;
+  }
+  h3::before{
+    content:"";width:7px;height:18px;background:var(--accent);
+    flex-shrink:0;border-radius:1px;
+  }
+  strong{color:var(--ink);font-weight:700;}
+
+  /* ============ 界面清单网格 ============ */
+  .iface-grid{
+    display:grid;grid-template-columns:repeat(2,1fr);
+    border:1px solid var(--line);background:var(--panel);margin-top:8px;
+  }
+  .iface{
+    padding:17px 19px;border-right:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+  }
+  .iface-grid .iface:nth-child(2n){border-right:none;}
+  .iface__top{display:flex;align-items:baseline;gap:9px;margin-bottom:5px;}
+  .iface__idx{
+    font-family:var(--mono);font-size:.72rem;color:var(--accent);
+    font-weight:700;
+  }
+  .iface__name{font-weight:800;font-size:.98rem;}
+  .iface__desc{font-size:.86rem;color:var(--ink-2);line-height:1.6;}
+
+  /* ============ 规格表 ============ */
+  .table-wrap{
+    border:1px solid var(--line);overflow-x:auto;margin:8px 0;
+    background:var(--panel);
+  }
+  table{border-collapse:collapse;width:100%;font-size:.9rem;}
+  thead th{
+    text-align:left;padding:11px 16px;
+    background:var(--dark);color:var(--code-fg);
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;font-weight:600;white-space:nowrap;
+  }
+  tbody td{
+    padding:12px 16px;border-bottom:1px solid var(--line-soft);
+    vertical-align:top;color:var(--ink-2);
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:var(--paper-2);}
+  td.k{font-weight:800;color:var(--ink);white-space:nowrap;}
+  td.pick{
+    font-family:var(--mono);font-size:.84rem;color:var(--accent-ink);
+    font-weight:600;
+  }
+
+  /* ============ 主链路 ============ */
+  .flow{counter-reset:step;margin:14px 0;}
+  .flow li{
+    list-style:none;position:relative;
+    padding:11px 0 11px 52px;
+    border-bottom:1px dashed var(--line);
+    color:var(--ink-2);
+  }
+  .flow li:last-child{border-bottom:none;}
+  .flow li::before{
+    counter-increment:step;content:counter(step,decimal-leading-zero);
+    position:absolute;left:0;top:11px;
+    font-family:var(--mono);font-size:.82rem;font-weight:700;
+    color:var(--paper);background:var(--slate);
+    width:32px;height:24px;display:flex;align-items:center;justify-content:center;
+  }
+
+  /* ============ 架构图 ============ */
+  .arch{border:1px solid var(--ink);background:var(--panel);margin:14px 0;}
+  .tier{
+    padding:20px;border-bottom:1px solid var(--line);
+    position:relative;
+  }
+  .tier:last-child{border-bottom:none;}
+  .tier__label{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--ink-3);margin-bottom:13px;
+    display:flex;align-items:center;gap:9px;
+  }
+  .tier__label::before{content:"";width:5px;height:5px;background:var(--accent);}
+  .tier__row{display:flex;flex-wrap:wrap;gap:13px;}
+  .node{
+    flex:1 1 180px;border:1.5px solid var(--ink);
+    background:var(--paper);padding:13px 15px;min-width:0;
+  }
+  .node--infra{border-style:dashed;border-color:var(--slate);background:var(--paper-2);}
+  .node__name{
+    font-family:var(--mono);font-weight:700;font-size:.92rem;
+    margin-bottom:3px;
+  }
+  .node--infra .node__name{color:var(--slate);}
+  .node__sub{font-size:.79rem;color:var(--ink-3);}
+  .tier-link{
+    text-align:center;color:var(--accent);font-size:1.1rem;
+    padding:3px 0;font-family:var(--mono);
+  }
+  .arch__legend{
+    padding:14px 20px;background:var(--dark);color:var(--code-fg);
+    font-family:var(--mono);font-size:.8rem;line-height:1.95;
+  }
+  .arch__legend b{color:#e8a262;font-weight:600;}
+
+  /* ============ 注记 / 提示块 ============ */
+  .note{
+    border-left:3px solid var(--accent);
+    background:var(--panel);
+    padding:16px 20px;margin:18px 0;
+  }
+  .note__tag{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent-ink);font-weight:700;
+    margin-bottom:6px;
+  }
+  .note p{margin:0;color:var(--ink-2);font-size:.92rem;}
+
+  /* ============ 代码 / 目录清单 ============ */
+  .listing{margin:14px 0;border:1px solid var(--ink);}
+  .listing__bar{
+    display:flex;align-items:center;gap:8px;
+    background:var(--dark-2);padding:8px 14px;
+  }
+  .listing__bar .lamp{width:9px;height:9px;border-radius:50%;background:var(--accent);}
+  .listing__bar span{
+    font-family:var(--mono);font-size:11px;letter-spacing:.12em;
+    text-transform:uppercase;color:var(--code-fg);
+  }
+  pre{
+    background:var(--dark);color:var(--code-fg);
+    padding:16px 18px;overflow-x:auto;
+    font-family:var(--mono);font-size:.82rem;line-height:1.72;
+  }
+  pre .c-key{color:#e8a262;}
+  pre .c-str{color:#9fc08a;}
+  pre .c-dim{color:#7d786b;}
+
+  /* ============ 数据库迁移清单 ============ */
+  .schema-list{margin:10px 0;border-top:1px solid var(--line);}
+  .schema-list li{
+    list-style:none;display:flex;gap:14px;
+    padding:9px 2px;border-bottom:1px solid var(--line-soft);
+    font-size:.89rem;
+  }
+  .schema-list code{
+    font-family:var(--mono);font-weight:700;color:var(--accent-ink);
+    background:var(--paper-2);padding:1px 7px;
+    flex-shrink:0;height:fit-content;font-size:.82rem;
+  }
+  .schema-list span{color:var(--ink-2);}
+  .idx-box{margin-top:6px;}
+  .idx-box pre code{display:block;}
+
+  /* ============ 开发阶段时间线 ============ */
+  .phase-ctrl{
+    display:flex;justify-content:flex-end;margin-bottom:10px;
+  }
+  .btn-ghost{
+    font-family:var(--mono);font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;cursor:pointer;
+    background:none;border:1px solid var(--line);
+    color:var(--ink-2);padding:6px 13px;
+    transition:border-color .15s,color .15s;
+  }
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent-ink);}
+  .timeline{position:relative;padding-left:38px;}
+  .timeline::before{
+    content:"";position:absolute;left:13px;top:6px;bottom:6px;
+    width:2px;background:var(--line);
+  }
+  .phase{
+    position:relative;margin-bottom:14px;
+    border:1px solid var(--line);background:var(--panel);
+  }
+  .phase::before{
+    content:"";position:absolute;left:-31px;top:18px;
+    width:14px;height:14px;border-radius:50%;
+    background:var(--paper);border:2.5px solid var(--slate);
+  }
+  .phase.is-open::before{background:var(--accent);border-color:var(--accent);}
+  .phase__head{
+    width:100%;text-align:left;cursor:pointer;
+    background:none;border:none;font-family:var(--sans);
+    display:flex;align-items:center;gap:14px;
+    padding:15px 18px;
+  }
+  .phase__no{
+    font-family:var(--mono);font-weight:700;font-size:.82rem;
+    color:var(--paper);background:var(--slate);
+    padding:3px 9px;flex-shrink:0;
+  }
+  .phase.is-open .phase__no{background:var(--accent);}
+  .phase__title{font-weight:800;font-size:1.02rem;flex:1;color:var(--ink);}
+  .phase__chev{
+    font-family:var(--mono);color:var(--ink-3);font-size:.9rem;
+    transition:transform .3s;
+  }
+  .phase.is-open .phase__chev{transform:rotate(90deg);color:var(--accent);}
+  .phase__body{
+    display:grid;grid-template-rows:0fr;
+    transition:grid-template-rows .34s ease;
+  }
+  .phase__body > .phase__inner{overflow:hidden;}
+  .phase.is-open .phase__body{grid-template-rows:1fr;}
+  .phase__inner-pad{
+    padding:0 18px 20px 18px;
+    border-top:1px dashed var(--line);margin-top:-1px;
+  }
+  .phase__goal{
+    font-size:.92rem;color:var(--ink);margin:14px 0 16px;
+    padding:10px 14px;background:var(--paper-2);
+    border-left:2px solid var(--accent);
+  }
+  .phase__goal b{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--accent-ink);}
+  .deliver-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .deliver h4{
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;margin-bottom:9px;
+    padding-bottom:6px;border-bottom:1px solid var(--line);
+  }
+  .deliver h4.d-out{color:var(--slate-2);}
+  .deliver h4.d-ok{color:var(--ok);}
+  .deliver ul{list-style:none;}
+  .deliver li{
+    font-size:.86rem;color:var(--ink-2);padding:5px 0 5px 20px;
+    position:relative;line-height:1.6;
+  }
+  .deliver--out li::before{
+    content:"›";position:absolute;left:2px;color:var(--slate-2);
+    font-family:var(--mono);font-weight:700;
+  }
+  .deliver--ok li::before{
+    content:"✓";position:absolute;left:2px;color:var(--ok);
+    font-family:var(--mono);font-weight:700;font-size:.8rem;
+  }
+
+  /* ============ 原则列表 ============ */
+  .principles{counter-reset:p;display:grid;gap:0;border-top:2px solid var(--ink);}
+  .principles li{
+    list-style:none;position:relative;
+    padding:14px 0 14px 56px;border-bottom:1px solid var(--line);
+    color:var(--ink);font-size:.95rem;
+  }
+  .principles li::before{
+    counter-increment:p;content:"P"counter(p);
+    position:absolute;left:0;top:14px;
+    font-family:var(--mono);font-size:.8rem;font-weight:700;
+    color:var(--accent-ink);
+  }
+
+  /* ============ MVP 范围 ============ */
+  .mvp-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px;}
+  .mvp-col{border:1px solid var(--line);background:var(--panel);}
+  .mvp-col__head{
+    padding:12px 16px;border-bottom:2px solid var(--ink);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .mvp-col__head h4{font-size:.98rem;font-weight:800;}
+  .mvp-col__head .pill{
+    font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;padding:3px 8px;
+  }
+  .pill--in{background:var(--accent);color:var(--paper);}
+  .pill--hold{background:var(--paper-2);color:var(--ink-3);border:1px solid var(--line);}
+  .mvp-col ul{list-style:none;padding:6px 0;}
+  .mvp-col li{
+    padding:7px 16px 7px 38px;position:relative;font-size:.89rem;
+    color:var(--ink-2);
+  }
+  .mvp-col li::before{
+    position:absolute;left:16px;font-family:var(--mono);font-size:.8rem;
+  }
+  .mvp-in li::before{content:"✓";color:var(--ok);font-weight:700;}
+  .mvp-hold li{color:var(--ink-3);}
+  .mvp-hold li::before{content:"//";color:var(--ink-3);}
+
+  /* ============ 规格缺口清单 ============ */
+  .gap-legend{
+    display:flex;flex-wrap:wrap;gap:18px;margin:14px 0 26px;
+    font-size:.84rem;color:var(--ink-2);
+  }
+  .gap-legend span{display:flex;align-items:center;gap:7px;}
+  .pri{
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;
+    font-weight:700;padding:3px 8px;text-transform:uppercase;
+    flex-shrink:0;
+  }
+  .pri--hi{background:var(--accent);color:var(--paper);}
+  .pri--mid{background:var(--slate);color:var(--paper);}
+  .pri--low{background:var(--paper-2);color:var(--ink-3);border:1px solid var(--line);}
+  .gap-tier{
+    font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-3);
+    margin:28px 0 0;padding-bottom:8px;border-bottom:2px solid var(--ink);
+  }
+  .gap-list{border-top:none;}
+  .gap{
+    display:flex;gap:16px;padding:16px 4px;
+    border-bottom:1px solid var(--line);
+  }
+  .gap:hover{background:var(--paper-2);}
+  .gap__mark{
+    flex-shrink:0;width:84px;display:flex;flex-direction:column;gap:7px;
+  }
+  .gap__id{
+    font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--ink);
+  }
+  .gap__body{min-width:0;}
+  .gap__body h4{font-size:.98rem;font-weight:800;margin-bottom:4px;}
+  .gap__need{font-size:.88rem;color:var(--ink-2);line-height:1.7;}
+  .gap__need b{color:var(--accent-ink);font-weight:700;}
+
+  /* ============ 页脚 ============ */
+  footer{
+    border-top:2px solid var(--ink);background:var(--paper-2);
+    padding:40px 30px;margin-top:30px;
+  }
+  .footer__inner{
+    max-width:1180px;margin:0 auto;
+    display:flex;flex-wrap:wrap;justify-content:space-between;gap:20px;
+    font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+    color:var(--ink-3);text-transform:uppercase;
+  }
+  .footer__inner b{color:var(--ink);}
+
+  /* ============ 移动端目录 ============ */
+  .toc-toggle{
+    display:none;position:fixed;right:18px;bottom:18px;z-index:85;
+    background:var(--ink);color:var(--paper);
+    border:none;cursor:pointer;
+    font-family:var(--mono);font-size:12px;letter-spacing:.1em;
+    padding:13px 18px;text-transform:uppercase;
+    box-shadow:0 6px 22px rgba(0,0,0,.28);
+  }
+  .backdrop{
+    display:none;position:fixed;inset:0;z-index:84;
+    background:rgba(28,27,23,.5);
+  }
+
+  /* ============ 响应式 ============ */
+  @media(max-width:880px){
+    .layout{grid-template-columns:1fr;gap:0;}
+    .toc{
+      position:fixed;top:0;left:0;bottom:0;width:280px;z-index:86;
+      background:var(--panel);border-right:2px solid var(--ink);
+      padding:26px 22px;max-height:none;
+      transform:translateX(-100%);transition:transform .28s ease;
+    }
+    body.toc-open .toc{transform:translateX(0);}
+    body.toc-open .backdrop{display:block;}
+    .toc-toggle{display:block;}
+    .iface-grid{grid-template-columns:1fr;}
+    .iface{border-right:none!important;}
+    .deliver-grid,.mvp-grid{grid-template-columns:1fr;}
+    .masthead{padding:54px 22px 44px;}
+    .doc{padding:30px 0 70px;}
+    .layout{padding:0 22px;}
+    .synapse-deco{width:280px;opacity:.32;}
+  }
+</style>
+</head>
+<body>
+
+<div class="progress"><div class="progress__fill" id="bar"></div></div>
+
+<!-- 顶栏 -->
+<div class="topbar">
+  <div class="wordmark"><span class="dot"></span>SYNAPSE</div>
+  <div class="topbar__meta">Development Spec · v1.0</div>
+</div>
+
+<!-- 报头 -->
+<header class="masthead">
+  <svg class="synapse-deco" viewBox="0 0 400 400" fill="none" aria-hidden="true">
+    <g stroke="#b14620" stroke-width="1.4" opacity="0.9">
+      <line x1="70" y1="90" x2="200" y2="60"/>
+      <line x1="200" y1="60" x2="320" y2="130"/>
+      <line x1="70" y1="90" x2="140" y2="220"/>
+      <line x1="140" y1="220" x2="200" y2="60"/>
+      <line x1="140" y1="220" x2="280" y2="260"/>
+      <line x1="320" y1="130" x2="280" y2="260"/>
+      <line x1="280" y1="260" x2="210" y2="350"/>
+      <line x1="140" y1="220" x2="210" y2="350"/>
+    </g>
+    <g fill="#b14620">
+      <circle cx="70" cy="90" r="7"/>
+      <circle cx="200" cy="60" r="10"/>
+      <circle cx="320" cy="130" r="6"/>
+      <circle cx="140" cy="220" r="11"/>
+      <circle cx="280" cy="260" r="8"/>
+      <circle cx="210" cy="350" r="6"/>
+    </g>
+  </svg>
+  <div class="masthead__inner">
+    <div class="eyebrow">结构化学习社区 · 开发规范</div>
+    <h1>Synapse<br><em>开发文档</em></h1>
+    <p class="masthead__lede">
+      面向 AI 学习者的结构化学习社区。把数学推导、可运行代码、论文引用放进同一套
+      Note / Block / Link 语义模型,让个人学习轨迹可以被检索、复习、公开、评论、引用和派生。
+    </p>
+    <div class="specstrip">
+      <div class="specstrip__cell">
+        <div class="specstrip__k">文档章节</div>
+        <div class="specstrip__v">10 章 <small>/ 含缺口清单</small></div>
+      </div>
+      <div class="specstrip__cell">
+        <div class="specstrip__k">开发阶段</div>
+        <div class="specstrip__v">Phase 0 – 9</div>
+      </div>
+      <div class="specstrip__cell">
+        <div class="specstrip__k">前端栈</div>
+        <div class="specstrip__v">Next.js 16 <small>React 19</small></div>
+      </div>
+      <div class="specstrip__cell">
+        <div class="specstrip__k">后端栈</div>
+        <div class="specstrip__v">Go 1.22+ <small>Postgres / Redis</small></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- 目录 -->
+  <aside class="toc" id="toc">
+    <div class="toc__title">目录 / Contents</div>
+    <nav>
+      <a href="#sec-1"><span class="num">01</span>项目定位</a>
+      <a href="#sec-2"><span class="num">02</span>核心业务模型</a>
+      <a href="#sec-3"><span class="num">03</span>总体架构</a>
+      <a href="#sec-4"><span class="num">04</span>前端技术选型</a>
+      <a href="#sec-5"><span class="num">05</span>后端技术选型</a>
+      <a href="#sec-6"><span class="num">06</span>数据库设计重点</a>
+      <a href="#sec-7"><span class="num">07</span>开发顺序</a>
+      <a href="#sec-8"><span class="num">08</span>推荐开发原则</a>
+      <a href="#sec-9"><span class="num">09</span>MVP 范围建议</a>
+      <a href="#sec-10"><span class="num">10</span>规格缺口清单</a>
+    </nav>
+    <div class="toc__foot">
+      SYNAPSE / DEV-SPEC<br>
+      LAST UPDATED 2026-05-19
+    </div>
+  </aside>
+
+  <!-- 正文 -->
+  <main class="doc">
+
+    <!-- 1 -->
+    <section id="sec-1">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">01</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Positioning</span>
+        </div>
+        <h2>项目定位</h2>
+      </div>
+      <p class="lead">
+        Synapse 是面向 AI 学习者的结构化学习社区。核心不是普通笔记,而是把数学推导、可运行代码、论文引用放进同一套
+        Note / Block / Link 语义模型里,让个人学习轨迹可以被检索、复习、公开、评论、引用和派生。
+      </p>
+      <h3>当前原型包含的主要界面</h3>
+      <div class="iface-grid">
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A1</span><span class="iface__name">Marketing Landing</span></div>
+          <div class="iface__desc">Hero、三类 Block、知识图谱演示、社区示例、工作流、Pricing、FAQ。</div>
+        </div>
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A2</span><span class="iface__name">Workspace</span></div>
+          <div class="iface__desc">个人学习首页、Roadmap、当前任务、最近 Note、复习提醒。</div>
+        </div>
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A3</span><span class="iface__name">Studio</span></div>
+          <div class="iface__desc">新建内容流程,包含标题、slug、标签、阶段、可见性、资源。</div>
+        </div>
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A4</span><span class="iface__name">Note Editor</span></div>
+          <div class="iface__desc">PaperBlock、MathBlock、CodeBlock、跨块 Link、自动保存、历史版本、发布。</div>
+        </div>
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A5</span><span class="iface__name">Explore</span></div>
+          <div class="iface__desc">Trending、Latest、Following、Tags、知识图谱、热门 Track。</div>
+        </div>
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A6</span><span class="iface__name">Profile</span></div>
+          <div class="iface__desc">用户主页、公开 Tracks / Notes / Papers / Graph、热力图、关注。</div>
+        </div>
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A7</span><span class="iface__name">Review</span></div>
+          <div class="iface__desc">SM-2 风格复习卡片、Deck、到期队列、准确率。</div>
+        </div>
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A8</span><span class="iface__name">Auth</span></div>
+          <div class="iface__desc">注册 / 登录、OAuth 入口、密码强度、产品价值说明。</div>
+        </div>
+        <div class="iface">
+          <div class="iface__top"><span class="iface__idx">A9</span><span class="iface__name">Admin</span></div>
+          <div class="iface__desc">后台管理、举报、注册闸门、审核策略、审计日志。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section id="sec-2">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">02</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Domain Model</span>
+        </div>
+        <h2>核心业务模型</h2>
+      </div>
+
+      <h3>2.1　领域实体</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>实体</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td class="k">User</td><td>用户账号、角色、头像、bio、社交链接、可见性设置。</td></tr>
+            <tr><td class="k">Track</td><td>一条主题学习轨道,由多个 Note 组成。</td></tr>
+            <tr><td class="k">Note</td><td>最小可分享学习单元,由多个 Block 组成。</td></tr>
+            <tr><td class="k">Block</td><td>原子内容块,核心类型为 MathBlock、CodeBlock、PaperBlock。</td></tr>
+            <tr><td class="k">Link</td><td>Block 之间的一等公民关系,支持 implements、derives_from、cites、contradicts、extends、related。</td></tr>
+            <tr><td class="k">ReviewCard</td><td>从 Block / Note 派生的复习卡,用于 SM-2 复习。</td></tr>
+            <tr><td class="k">Comment / Discussion</td><td>评论和树状讨论。</td></tr>
+            <tr><td class="k">Follow / Like / Bookmark</td><td>社区互动和 Feed 来源。</td></tr>
+            <tr><td class="k">Report / ModerationAction</td><td>举报、审核、管理员审计。</td></tr>
+            <tr><td class="k">Tag / Paper</td><td>主题标签和规范化论文元数据。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.2　产品主链路</h3>
+      <ol class="flow">
+        <li>用户注册并进入 Workspace。</li>
+        <li>用户创建 Track,按 Roadmap 推进学习。</li>
+        <li>用户在 Studio / Editor 创建 Note。</li>
+        <li>Note 内插入 MathBlock、CodeBlock、PaperBlock。</li>
+        <li>用户在 Block 或 Math step 之间建立 Link。</li>
+        <li>保存草稿,发布为 private / unlisted / public。</li>
+        <li>public Note 触发 embedding worker,进入推荐、搜索和图谱。</li>
+        <li>其他用户在 Explore / Profile / Graph 中浏览、关注、评论、引用。</li>
+        <li>用户把关键 Block 派生为 ReviewCard,按 SM-2 复习。</li>
+        <li>管理员处理举报、封禁、下架内容、调整注册策略。</li>
+      </ol>
+    </section>
+
+    <!-- 3 -->
+    <section id="sec-3">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">03</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Architecture</span>
+        </div>
+        <h2>总体架构</h2>
+      </div>
+      <p>建议采用三端一服务架构,客户端访问 API,API 编排数据存储与异步 Worker:</p>
+
+      <div class="arch">
+        <div class="tier">
+          <div class="tier__label">客户端层 / Clients</div>
+          <div class="tier__row">
+            <div class="node"><div class="node__name">learning-garden-web</div><div class="node__sub">用户端 + 落地页</div></div>
+            <div class="node"><div class="node__name">apps/admin</div><div class="node__sub">管理后台</div></div>
+          </div>
+        </div>
+        <div class="tier-link">↓　REST / SSE　↓</div>
+        <div class="tier">
+          <div class="tier__label">服务层 / Services</div>
+          <div class="tier__row">
+            <div class="node"><div class="node__name">services/api</div><div class="node__sub">Go REST / SSE API</div></div>
+            <div class="node"><div class="node__name">services/worker</div><div class="node__sub">异步任务处理</div></div>
+          </div>
+        </div>
+        <div class="tier-link">↓　持久化 / 队列 / 对象存储　↓</div>
+        <div class="tier">
+          <div class="tier__label">基础设施 / Infrastructure</div>
+          <div class="tier__row">
+            <div class="node node--infra"><div class="node__name">PostgreSQL 16</div><div class="node__sub">pgvector · pg_trgm</div></div>
+            <div class="node node--infra"><div class="node__name">Redis 7</div><div class="node__sub">session · 限流 · 队列</div></div>
+            <div class="node node--infra"><div class="node__name">S3 / MinIO</div><div class="node__sub">PDF · 头像 · 图片</div></div>
+            <div class="node node--infra"><div class="node__name">Embedding Provider</div><div class="node__sub">向量化服务</div></div>
+          </div>
+        </div>
+        <div class="arch__legend">
+          <b>FLOW</b>　Web / Admin → API<br>
+          <b>FLOW</b>　API → PostgreSQL · Redis · S3 · Worker<br>
+          <b>FLOW</b>　Worker → PostgreSQL · Redis · Embedding Provider
+        </div>
+      </div>
+
+      <div class="note">
+        <div class="note__tag">注 / Note</div>
+        <p>
+          前端由独立的 learning-garden-web 仓库维护,并延续 Next.js 16 + React 19。
+          当前仓库保持后端纯仓库,只负责 Go API、数据库迁移、对象存储与本地依赖编排。
+        </p>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section id="sec-4">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">04</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Frontend Stack</span>
+        </div>
+        <h2>前端技术选型</h2>
+      </div>
+
+      <h3>4.1　基础栈</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>分类</th><th>选择</th><th>理由</th></tr></thead>
+          <tbody>
+            <tr><td class="k">框架</td><td class="pick">Next.js 16 App Router + React 19</td><td>learning-garden-web 仓库采用;落地页 SEO、SSR、RSC、路由和部署更直接。</td></tr>
+            <tr><td class="k">语言</td><td class="pick">TypeScript strict</td><td>与复杂编辑器、API DTO、权限状态匹配。</td></tr>
+            <tr><td class="k">包管理</td><td class="pick">pnpm</td><td>前端仓库使用 pnpm;后端仓库不内置前端依赖。</td></tr>
+            <tr><td class="k">样式</td><td class="pick">CSS Variables + Tailwind CSS + clsx / tailwind-merge</td><td>原型依赖大量设计 token;Tailwind 适合应用界面提效。</td></tr>
+            <tr><td class="k">UI 基础</td><td class="pick">shadcn/ui + Radix UI</td><td>表单、弹窗、菜单、Tabs、Accordion、Dialog 可访问性更稳。</td></tr>
+            <tr><td class="k">图标</td><td class="pick">lucide-react</td><td>统一工具按钮和导航图标。</td></tr>
+            <tr><td class="k">服务端状态</td><td class="pick">TanStack Query v5</td><td>Note、Feed、评论、图谱等远程状态缓存和失效控制。</td></tr>
+            <tr><td class="k">本地状态</td><td class="pick">Zustand</td><td>编辑器 UI 状态、草稿状态、命令面板。</td></tr>
+            <tr><td class="k">表单校验</td><td class="pick">react-hook-form + zod</td><td>Auth、Studio、Admin 表单可复用 schema。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>4.2　关键功能库</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>功能</th><th>选择</th></tr></thead>
+          <tbody>
+            <tr><td class="k">块编辑器</td><td class="pick">TipTap / ProseMirror + 自定义 NodeView</td></tr>
+            <tr><td class="k">代码编辑</td><td class="pick">CodeMirror 6</td></tr>
+            <tr><td class="k">代码高亮</td><td class="pick">Shiki</td></tr>
+            <tr><td class="k">数学渲染</td><td class="pick">KaTeX</td></tr>
+            <tr><td class="k">PDF 预览</td><td class="pick">react-pdf / pdf.js</td></tr>
+            <tr><td class="k">知识图谱</td><td class="pick">react-force-graph 或自研 Canvas force graph</td></tr>
+            <tr><td class="k">落地页粒子</td><td class="pick">three.js 或当前 Canvas 粒子实现;复杂 3D 再引入 @react-three/fiber</td></tr>
+            <tr><td class="k">动画</td><td class="pick">Framer Motion;GSAP 仅用于复杂时间轴</td></tr>
+            <tr><td class="k">E2E</td><td class="pick">Playwright</td></tr>
+            <tr><td class="k">组件测试</td><td class="pick">Vitest + React Testing Library</td></tr>
+            <tr><td class="k">可访问性</td><td class="pick">axe-core</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>4.3　前端目录建议</h3>
+      <div class="listing">
+        <div class="listing__bar"><span class="lamp"></span><span>app structure</span></div>
+        <pre><span class="c-key">app/</span>
+  (marketing)/
+  (auth)/
+  app/
+    workspace/
+    studio/
+    notes/[slug]/
+    explore/
+    u/[handle]/
+    review/
+    settings/
+  admin/
+<span class="c-key">components/</span>
+  ui/
+  landing/
+<span class="c-key">features/</span>
+  auth/   editor/   graph/
+  workspace/   community/   review/   admin/
+<span class="c-key">lib/</span>
+  api/   auth/   config/   query/   validators/
+<span class="c-key">styles/</span></pre>
+      </div>
+      <p>如果后续拆成 monorepo,可迁移为:</p>
+      <div class="listing">
+        <div class="listing__bar"><span class="lamp"></span><span>monorepo layout</span></div>
+        <pre><span class="c-dim"># 后续可选演进路径</span>
+learning-garden-web
+apps/admin
+services/api
+services/worker
+packages/shared-types
+infra
+docs</pre>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section id="sec-5">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">05</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Backend Stack</span>
+        </div>
+        <h2>后端技术选型</h2>
+      </div>
+
+      <h3>5.1　基础栈</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>分类</th><th>选择</th><th>理由</th></tr></thead>
+          <tbody>
+            <tr><td class="k">语言</td><td class="pick">Go 1.22+</td><td>适合 API、后台任务、并发和长期维护。</td></tr>
+            <tr><td class="k">Web 框架</td><td class="pick">chi</td><td>轻量,贴近标准库,中间件组合清晰。</td></tr>
+            <tr><td class="k">数据访问</td><td class="pick">sqlc + pgx</td><td>类型安全 SQL,避免 ORM 黑盒。</td></tr>
+            <tr><td class="k">迁移</td><td class="pick">golang-migrate</td><td>简单稳定,适合 CI 和 Docker。</td></tr>
+            <tr><td class="k">数据库</td><td class="pick">PostgreSQL 16</td><td>主业务数据、全文 / 模糊搜索、事务一致性。</td></tr>
+            <tr><td class="k">向量检索</td><td class="pick">pgvector</td><td>Note / Block embedding 推荐和相似搜索。</td></tr>
+            <tr><td class="k">模糊搜索</td><td class="pick">pg_trgm</td><td>搜索 Note、Paper、User、Tag。</td></tr>
+            <tr><td class="k">缓存 / 限流</td><td class="pick">Redis 7 + go-redis/v9</td><td>token、限流、热点缓存、SSE 状态。</td></tr>
+            <tr><td class="k">任务队列</td><td class="pick">asynq</td><td>embedding、邮件、PDF 元数据、举报通知。</td></tr>
+            <tr><td class="k">认证</td><td class="pick">JWT access + refresh cookie + Redis 吊销</td><td>用户体验和后台管控平衡。</td></tr>
+            <tr><td class="k">密码</td><td class="pick">argon2id</td><td>注册登录安全基线。</td></tr>
+            <tr><td class="k">对象存储</td><td class="pick">MinIO 本地 + S3 / R2 生产</td><td>PDF、头像、图片。</td></tr>
+            <tr><td class="k">日志</td><td class="pick">zerolog</td><td>结构化日志、低开销。</td></tr>
+            <tr><td class="k">指标 / 追踪</td><td class="pick">Prometheus + OpenTelemetry 接入点</td><td>线上问题定位。</td></tr>
+            <tr><td class="k">API 文档</td><td class="pick">OpenAPI 3.1</td><td>前后端协作、自动生成客户端类型。</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>5.2　后端模块边界</h3>
+      <div class="listing">
+        <div class="listing__bar"><span class="lamp"></span><span>services/api</span></div>
+        <pre><span class="c-key">services/api/</span>
+  cmd/server          cmd/worker
+  internal/domain     internal/repo
+  internal/service    internal/http
+  internal/auth       internal/editor
+  internal/search     internal/embedding
+  internal/review     internal/moderation
+  internal/platform
+  db/migrations       db/queries
+  api/openapi.yaml</pre>
+      </div>
+
+      <h3>5.3　API 风格</h3>
+      <div class="deliver deliver--out">
+        <ul>
+          <li>主体使用 REST。</li>
+          <li>通知和评论推送使用 SSE。</li>
+          <li>错误码统一按 <code>code / message / details / requestId</code> 返回。</li>
+          <li>前端所有 mutating 请求带 CSRF header。</li>
+          <li>后台接口统一加 <code>/admin</code> 前缀并要求 <code>role in (moderator, admin)</code>。</li>
+        </ul>
+      </div>
+      <p>响应包络统一:</p>
+      <div class="listing">
+        <div class="listing__bar"><span class="lamp"></span><span>response envelope</span></div>
+        <pre>{
+  <span class="c-key">"data"</span>: {},
+  <span class="c-key">"error"</span>: <span class="c-str">null</span>,
+  <span class="c-key">"meta"</span>: {}
+}</pre>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section id="sec-6">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">06</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Database</span>
+        </div>
+        <h2>数据库设计重点</h2>
+      </div>
+
+      <h3>首批迁移</h3>
+      <ul class="schema-list">
+        <li><code>users</code><span>账号、密码 hash、角色、状态、邮箱验证。</span></li>
+        <li><code>tracks</code><span>owner、title、slug、summary、visibility、tags、stats。</span></li>
+        <li><code>notes</code><span>track、owner、title、slug、visibility、status、content jsonb、plaintext、embedding、stats。</span></li>
+        <li><code>blocks</code><span>note、kind、data jsonb、order_index、embedding。</span></li>
+        <li><code>block_links</code><span>src / dst block、rel_type、note、created_by。</span></li>
+        <li><code>papers</code><span>arXiv / DOI / title / authors / year / abstract / pdf_url / canonical_key。</span></li>
+        <li><code>review_cards</code><span>block / note 来源、front / back、ease、interval、due_at、state。</span></li>
+        <li><code>comments</code><span>评论与树状讨论(含 discussions)。</span></li>
+        <li><code>follows</code><span>多态 target 的关注关系。</span></li>
+        <li><code>likes / bookmarks</code><span>多态 target 的点赞与收藏。</span></li>
+        <li><code>reports</code><span>举报队列。</span></li>
+        <li><code>moderation_actions</code><span>审计日志。</span></li>
+        <li><code>platform_settings</code><span>注册模式、限流策略、审核阈值。</span></li>
+      </ul>
+
+      <h3>关键索引</h3>
+      <div class="listing idx-box">
+        <div class="listing__bar"><span class="lamp"></span><span>key indexes</span></div>
+        <pre>notes(owner_id, status, updated_at desc)
+notes(visibility, published_at desc)
+notes using gin(plaintext gin_trgm_ops)
+notes using ivfflat(embedding vector_cosine_ops)
+blocks(note_id, order_index)
+blocks using ivfflat(embedding vector_cosine_ops)
+block_links(src_block_id)   block_links(dst_block_id)
+comments(target_type, target_id, created_at desc)
+review_cards(user_id, due_at, state)</pre>
+      </div>
+    </section>
+
+    <!-- 7 -->
+    <section id="sec-7">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">07</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Roadmap</span>
+        </div>
+        <h2>开发顺序</h2>
+      </div>
+      <p>共 10 个阶段。每个阶段都包含目标、交付与验收三段;点击阶段标题展开或收起明细。</p>
+
+      <div class="phase-ctrl">
+        <button class="btn-ghost" id="toggleAll" data-state="open">收起全部</button>
+      </div>
+
+      <div class="timeline">
+
+        <article class="phase is-open">
+          <button class="phase__head" aria-expanded="true">
+            <span class="phase__no">P0</span>
+            <span class="phase__title">仓库和运行基线</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>所有人能一条命令跑起前端、API、Postgres、Redis、MinIO。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>后端仓库补 <code>.env.example</code>;落地页运行指向独立 <code>learning-garden-web</code> 仓库。</li>
+                <li>新增 services/api Go 服务,提供 /healthz。</li>
+                <li>新增 Docker Compose:Postgres 16 + pgvector、Redis、MinIO。</li>
+                <li>新增 Makefile:dev、api:dev、db:migrate、ci。</li>
+                <li>后端 CI 先跑 gofmt 检查与 go test ./...;前端 CI 留在 learning-garden-web。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>在 learning-garden-web 仓库运行 pnpm dev 可打开落地页。</li>
+                <li>go run ./services/api/cmd/server 可返回 /healthz。</li>
+                <li>docker compose up 可启动依赖。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P1</span>
+            <span class="phase__title">认证和用户基础</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>用户能注册、登录、刷新会话、访问个人身份。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>users 迁移和 sqlc queries。</li>
+                <li>注册、登录、刷新、退出、/auth/me。</li>
+                <li>argon2id、access token、refresh cookie、Redis 吊销。</li>
+                <li>前端 Auth 页面接真实 API。</li>
+                <li>基础 Route Guard。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>注册后可登录。</li>
+                <li>刷新页面仍保持会话。</li>
+                <li>logout 后 refresh 失败。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P2</span>
+            <span class="phase__title">Track / Note / Block 数据闭环</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>编辑器暂时可以先用简化 UI,但数据模型必须真实。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>tracks、notes、blocks、block_links、papers 迁移。</li>
+                <li>Track CRUD、Note CRUD、Block 物化保存。</li>
+                <li>Note content 使用结构化 JSON,保存时同步 plaintext。</li>
+                <li>前端 Workspace / Studio / Note Editor 读取真实 Track / Note。</li>
+                <li>Note visibility:private / unlisted / public。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>创建 Track。</li>
+                <li>创建 Note 并保存三类 Block。</li>
+                <li>刷新后数据完整恢复。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P3</span>
+            <span class="phase__title">核心编辑器</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>实现产品差异化的 Math / Code / Paper / Link。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>TipTap 编辑器基础。</li>
+                <li>MathBlock:CodeMirror LaTeX 输入、KaTeX 预览、step anchor。</li>
+                <li>CodeBlock:CodeMirror、多语言、复制代码、复制依赖。</li>
+                <li>PaperBlock:arXiv / DOI 导入、quote、anchor。</li>
+                <li>Link 创建弹窗:搜索 Block / Note、选择 relation type、写注释。</li>
+                <li>自动保存:1.5s 防抖、失败提示、历史版本快照。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>一个 Note 中包含 PaperBlock、MathBlock、CodeBlock。</li>
+                <li>Math step 可以 link 到 CodeBlock。</li>
+                <li>hover link 显示对端预览。</li>
+                <li>发布前后 Link 不丢失。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P4</span>
+            <span class="phase__title">Explore、Profile 和知识图谱</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>公开内容可以被发现、浏览、关注和引用。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>Explore:Trending、Latest、Following、Tags。</li>
+                <li>Note 阅读页:目录、评论、Like、Bookmark、Share、Cites / Cited by。</li>
+                <li>Profile:用户资料、公开 Track、热力图、Block 分布。</li>
+                <li>Graph:个人图谱和全站图谱,节点为 Note,边为 Link 聚合。</li>
+                <li>Trending 算法:7 日内 likes×3 + comments×2 + views,按时间衰减。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>A 发布 public Note,B 在 Explore 能看到。</li>
+                <li>B 关注 A 后 Following 出现 A 的新内容。</li>
+                <li>图谱能显示 Note 节点和 Link 边。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P5</span>
+            <span class="phase__title">Review 复习系统</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>从学习内容派生复习卡,形成长期学习闭环。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>review_cards、review_logs 迁移。</li>
+                <li>从 MathBlock / CodeBlock / PaperBlock 创建卡片。</li>
+                <li>SM-2 简化算法:Again / Hard / Good / Easy 更新 ease、interval、due_at。</li>
+                <li>Review 页面接真实 Deck、Due Queue、准确率统计。</li>
+                <li>Workspace 显示今日 due 数。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>用户可从 Block 创建复习卡。</li>
+                <li>到期卡进入 Review Queue。</li>
+                <li>自评后 due_at 正确变化。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P6</span>
+            <span class="phase__title">Embedding、搜索和推荐</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>让语义层产生实际推荐能力。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>public Note 发布后投递 asynq job。</li>
+                <li>worker 计算 Note 和 Block embedding。</li>
+                <li>pgvector 相似推荐接口。</li>
+                <li>搜索:keyword + tag + vector hybrid。</li>
+                <li>Explore / Editor Link 弹窗使用搜索接口。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>发布 public Note 后 worker 写入 embedding。</li>
+                <li>Note 详情页展示相关 Note / Block。</li>
+                <li>Link 弹窗能搜索到候选 Block。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P7</span>
+            <span class="phase__title">社区互动和通知</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>完成社交闭环。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>Comment、Discussion、@mention。</li>
+                <li>Follow、Like、Bookmark。</li>
+                <li>Notification 表和 SSE /events。</li>
+                <li>邮件通知任务接口。</li>
+                <li>速率限制和新用户冷却规则。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>评论触发通知。</li>
+                <li>前端不刷新可收到 SSE 红点。</li>
+                <li>受限用户触发限流提示。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P8</span>
+            <span class="phase__title">管理后台和反滥用</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>平台可运营、可审核、可控注册。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>Admin 登录和角色校验。</li>
+                <li>Dashboard KPI。</li>
+                <li>用户管理、内容管理、举报队列。</li>
+                <li>审核策略配置:敏感词、自动隐藏阈值、新用户规则。</li>
+                <li>registration_mode:open / invite_only / closed。</li>
+                <li>moderation_actions 审计日志。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>管理员可处理举报并下架内容。</li>
+                <li>registration_mode=closed 时注册被拒绝。</li>
+                <li>每个管理动作可在审计日志查询。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+        <article class="phase">
+          <button class="phase__head" aria-expanded="false">
+            <span class="phase__no">P9</span>
+            <span class="phase__title">安全、可观测性、文档和发布</span>
+            <span class="phase__chev">▸</span>
+          </button>
+          <div class="phase__body"><div class="phase__inner"><div class="phase__inner-pad">
+            <div class="phase__goal"><b>目标　</b>达到可部署 MVP。</div>
+            <div class="deliver-grid">
+              <div class="deliver deliver--out"><h4 class="d-out">交付 / Deliverables</h4><ul>
+                <li>CSRF double-submit。</li>
+                <li>登录 / 发帖 / 评论分级限流。</li>
+                <li>邮箱、token、密码日志脱敏。</li>
+                <li>Prometheus /metrics 和 request id。</li>
+                <li>OpenAPI 文档。</li>
+                <li>README、architecture、api、admin guide、design system。</li>
+                <li>Playwright E2E:注册 → 创建 Note → 发布 → 评论 → 管理员处理举报。</li>
+              </ul></div>
+              <div class="deliver deliver--ok"><h4 class="d-ok">验收 / Acceptance</h4><ul>
+                <li>make ci 全部通过。</li>
+                <li>新机器 5 分钟内能跑起本地环境。</li>
+                <li>Lighthouse:Landing Desktop ≥ 90、Accessibility ≥ 95。</li>
+              </ul></div>
+            </div>
+          </div></div></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section id="sec-8">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">08</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Principles</span>
+        </div>
+        <h2>推荐开发原则</h2>
+      </div>
+      <ul class="principles">
+        <li>先打通真实数据闭环,再精修视觉细节。</li>
+        <li>Note / Block / Link 是最高优先级,不要先把社区功能做满。</li>
+        <li>每个 Phase 结束必须有可演示链路。</li>
+        <li>后端先写迁移和 service 单测,再接 handler。</li>
+        <li>前端所有 API schema 用 zod 或生成类型约束。</li>
+        <li>编辑器复杂功能必须拆小:Block 渲染、Block 存储、Link 搜索、自动保存、历史版本分开做。</li>
+        <li>所有外部能力,包括 embedding、邮件、OAuth、对象存储,都必须通过环境变量配置。</li>
+        <li>任何 mock 都要可替换,并标明接口边界。</li>
+      </ul>
+    </section>
+
+    <!-- 9 -->
+    <section id="sec-9">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">09</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">MVP Scope</span>
+        </div>
+        <h2>MVP 范围建议</h2>
+      </div>
+      <div class="mvp-grid">
+        <div class="mvp-col">
+          <div class="mvp-col__head">
+            <h4>必须包含</h4>
+            <span class="pill pill--in">In Scope</span>
+          </div>
+          <ul class="mvp-in">
+            <li>登录注册</li>
+            <li>Workspace</li>
+            <li>Track / Note CRUD</li>
+            <li>MathBlock、CodeBlock、PaperBlock</li>
+            <li>Block Link</li>
+            <li>发布和公开阅读页</li>
+            <li>Explore basic feed</li>
+            <li>Profile basic page</li>
+            <li>Review basic queue</li>
+            <li>Admin 举报处理最小闭环</li>
+          </ul>
+        </div>
+        <div class="mvp-col">
+          <div class="mvp-col__head">
+            <h4>暂缓</h4>
+            <span class="pill pill--hold">Deferred</span>
+          </div>
+          <ul class="mvp-hold">
+            <li>Team / SSO</li>
+            <li>复杂 OAuth 账号合并</li>
+            <li>Meilisearch</li>
+            <li>实时代码沙箱运行</li>
+            <li>高级 PDF 高亮同步</li>
+            <li>复杂 Lottie 动效</li>
+            <li>私有部署商业化配置</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10 -->
+    <section id="sec-10">
+      <div class="sec-head">
+        <div class="sec-head__bar">
+          <span class="sec-head__num">10</span>
+          <span class="sec-head__rule"></span>
+          <span class="sec-head__tag">Open Questions</span>
+        </div>
+        <h2>规格缺口清单</h2>
+      </div>
+      <p>
+        当前文档作为工程开发指南已完整,但作为产品规格仍有以下待补齐项。开发各 Phase 前应先关闭对应缺口,
+        避免前后端并行时返工。
+      </p>
+      <div class="gap-legend">
+        <span><i class="pri pri--hi">高</i>影响开发能否落地</span>
+        <span><i class="pri pri--mid">中</i>影响产品体验一致性</span>
+        <span><i class="pri pri--low">低</i>易忽略但需提前定</span>
+      </div>
+
+      <div class="gap-tier">高优先级 / Blocking</div>
+      <div class="gap-list">
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G1</span><span class="pri pri--hi">高</span></div>
+          <div class="gap__body">
+            <h4>编辑器 Block / Link 规格</h4>
+            <div class="gap__need">
+              产品核心差异点但规格最薄。需补充:三类 Block 的 <b>data jsonb 字段结构</b>;
+              Link 6 种关系的<b>可连接 Block 类型约束与方向规则</b>;Math step anchor 的定位机制;
+              历史版本的快照频率、保留期与回滚规则。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G2</span><span class="pri pri--hi">高</span></div>
+          <div class="gap__body">
+            <h4>API 端点契约清单</h4>
+            <div class="gap__need">
+              已定义统一响应包络,但缺<b>端点清单</b>(路由、方法、入参、鉴权要求)。
+              Phase 1 起前后端并行,需要可对照的接口列表或 OpenAPI 草稿。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G3</span><span class="pri pri--hi">高</span></div>
+          <div class="gap__body">
+            <h4>角色权限矩阵</h4>
+            <div class="gap__need">
+              仅有角色名(user / moderator / admin)。需一张<b>权限对照表</b>,覆盖三种角色对
+              Note 三种 visibility 的可见、评论、派生、编辑权限。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G4</span><span class="pri pri--hi">高</span></div>
+          <div class="gap__body">
+            <h4>字段级数据模型</h4>
+            <div class="gap__need">
+              实体仅停在用途级。需补充<b>枚举值全集</b>(status、rel_type、report 状态等)、
+              关键字段类型与约束、外键级联策略。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gap-tier">中优先级 / Consistency</div>
+      <div class="gap-list">
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G5</span><span class="pri pri--mid">中</span></div>
+          <div class="gap__body">
+            <h4>页面状态规范</h4>
+            <div class="gap__need">
+              每屏只有功能罗列,缺<b>空状态、加载态、错误态、首次 onboarding</b> 的设计与文案。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G6</span><span class="pri pri--mid">中</span></div>
+          <div class="gap__body">
+            <h4>通知类型枚举</h4>
+            <div class="gap__need">
+              Notification 表已规划,但<b>通知种类未列举</b>(评论、关注、被引用、举报结果等)。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G7</span><span class="pri pri--mid">中</span></div>
+          <div class="gap__body">
+            <h4>搜索排序权重</h4>
+            <div class="gap__need">
+              Trending 已有公式,但 keyword + tag + vector 的 <b>hybrid 融合权重与排序规则</b>未定义。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G8</span><span class="pri pri--mid">中</span></div>
+          <div class="gap__body">
+            <h4>审核阈值默认值</h4>
+            <div class="gap__need">
+              敏感词表、自动隐藏阈值、新用户冷却规则均称"可配置"但<b>无默认值</b>,需给出初始基线。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G9</span><span class="pri pri--mid">中</span></div>
+          <div class="gap__body">
+            <h4>SM-2 算法参数</h4>
+            <div class="gap__need">
+              称"简化算法",但 <b>ease / interval 初始值</b>与 Again / Hard / Good / Easy 的更新公式未给出。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G10</span><span class="pri pri--mid">中</span></div>
+          <div class="gap__body">
+            <h4>Embedding 配置</h4>
+            <div class="gap__need">
+              <b>embedding 模型、向量维度、长文 chunking 策略</b>未定,直接影响迁移中 embedding 列定义。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gap-tier">易忽略但重要 / Easy to Miss</div>
+      <div class="gap-list">
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G11</span><span class="pri pri--low">低</span></div>
+          <div class="gap__body">
+            <h4>内容许可协议</h4>
+            <div class="gap__need">
+              Note 可公开、引用、派生,需明确<b>内容授权方式</b>(平台条款 / CC 协议),否则存在法律风险。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G12</span><span class="pri pri--low">低</span></div>
+          <div class="gap__body">
+            <h4>限流具体数值</h4>
+            <div class="gap__need">
+              分级限流只定义了层级,缺登录 / 发帖 / 评论各端点的<b>具体阈值</b>。
+            </div>
+          </div>
+        </div>
+        <div class="gap">
+          <div class="gap__mark"><span class="gap__id">G13</span><span class="pri pri--low">低</span></div>
+          <div class="gap__body">
+            <h4>可观测性业务指标</h4>
+            <div class="gap__need">
+              已选 Prometheus,但需补充要埋点的<b>业务指标与事件清单</b>(注册转化、发布量、复习留存等)。
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="footer__inner">
+    <span><b>SYNAPSE</b> — 结构化学习社区</span>
+    <span>开发文档 / Development Spec v1.0</span>
+    <span>10 章 · 10 阶段 · Generated 2026-05-19</span>
+  </div>
+</footer>
+
+<button class="toc-toggle" id="tocToggle">☰ 目录</button>
+<div class="backdrop" id="backdrop"></div>
+
+<script>
+(function(){
+  /* —— 阅读进度 —— */
+  var bar = document.getElementById('bar');
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc nav a'));
+  var sections = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+
+  function onScroll(){
+    var de = document.documentElement;
+    var max = de.scrollHeight - de.clientHeight;
+    var ratio = max > 0 ? de.scrollTop / max : 0;
+    bar.style.transform = 'scaleX(' + ratio + ')';
+
+    /* 滚动定位当前章节 */
+    var y = window.scrollY + 130;
+    var current = sections[0];
+    for (var i = 0; i < sections.length; i++){
+      if (sections[i].offsetTop <= y) current = sections[i];
+    }
+    for (var j = 0; j < links.length; j++){
+      var on = links[j].getAttribute('href') === '#' + current.id;
+      links[j].classList.toggle('is-active', on);
+    }
+  }
+  document.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  /* —— 阶段折叠 —— */
+  var phases = Array.prototype.slice.call(document.querySelectorAll('.phase'));
+  phases.forEach(function(p){
+    var head = p.querySelector('.phase__head');
+    head.addEventListener('click', function(){
+      var open = p.classList.toggle('is-open');
+      head.setAttribute('aria-expanded', open ? 'true' : 'false');
+      syncToggleAll();
+    });
+  });
+
+  /* —— 全部展开 / 收起 —— */
+  var toggleAll = document.getElementById('toggleAll');
+  function syncToggleAll(){
+    var allOpen = phases.every(function(p){ return p.classList.contains('is-open'); });
+    var allClosed = phases.every(function(p){ return !p.classList.contains('is-open'); });
+    if (allOpen){ toggleAll.dataset.state = 'open'; toggleAll.textContent = '收起全部'; }
+    else if (allClosed){ toggleAll.dataset.state = 'closed'; toggleAll.textContent = '展开全部'; }
+  }
+  toggleAll.addEventListener('click', function(){
+    var open = toggleAll.dataset.state !== 'open';
+    phases.forEach(function(p){
+      p.classList.toggle('is-open', open);
+      p.querySelector('.phase__head').setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    toggleAll.dataset.state = open ? 'open' : 'closed';
+    toggleAll.textContent = open ? '收起全部' : '展开全部';
+  });
+
+  /* —— 移动端目录抽屉 —— */
+  var body = document.body;
+  var tocToggle = document.getElementById('tocToggle');
+  var backdrop = document.getElementById('backdrop');
+  function closeToc(){ body.classList.remove('toc-open'); }
+  tocToggle.addEventListener('click', function(){ body.classList.toggle('toc-open'); });
+  backdrop.addEventListener('click', closeToc);
+  links.forEach(function(a){ a.addEventListener('click', closeToc); });
+})();
+</script>
+
+</body>
+</html>

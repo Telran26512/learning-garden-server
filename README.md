@@ -2,16 +2,44 @@
 
 Go backend server for **AI Learning Garden**, a multi-user AI learning community that connects math derivations, runnable code, and paper reading workflows.
 
-This repository owns the backend API, persistence, authorization, content ownership, and integration boundaries. Architecture, roadmap, data model, and cross-repository conventions live in the project control repository:
+This repository owns the backend API scaffold, local infrastructure, persistence, authorization, content ownership, and integration boundaries for the Synapse/Learning Garden app. Architecture, roadmap, data model, and cross-repository conventions live in the project control repository:
 
 - [learning-garden](https://github.com/Telran26512/learning-garden)
 - Frontend application: [learning-garden-web](https://github.com/Telran26512/learning-garden-web)
 
 ## Current Status
 
-This repository is initialized for the backend service. The Go service scaffold will be added during M0 after the project docs are reviewed.
+P0 is scaffolded:
 
-Until the scaffold lands, this README defines the intended repository boundary, runtime expectations, and development conventions.
+- `services/api` runs the Go API with `/healthz`.
+- `docker-compose.yml` starts Postgres with pgvector, Redis, and MinIO.
+- `Makefile` and GitHub Actions provide backend development and CI commands.
+- The landing page stays in the separate [`learning-garden-web`](https://github.com/Telran26512/learning-garden-web) repository.
+
+## P0 Acceptance
+
+Backend P0 is considered ready when these checks pass from this repository:
+
+```bash
+go test ./...
+go run ./services/api/cmd/server
+curl http://localhost:8080/healthz
+docker compose up -d
+docker compose ps
+```
+
+Expected `/healthz` response:
+
+```json
+{"status":"ok"}
+```
+
+The frontend acceptance item is verified from the dedicated frontend repository:
+
+```bash
+cd ../learning-garden-web
+pnpm dev
+```
 
 ## Responsibilities
 
@@ -28,31 +56,34 @@ Until the scaffold lands, this README defines the intended repository boundary, 
 
 It is not responsible for:
 
-- Rendering the frontend UI.
+- Rendering or developing the frontend UI.
 - Serving as a CMS owned by a third-party vendor.
 - Running browser-side Python code.
 - Introducing microservices before the project needs them.
 
-## Planned Stack
+## Stack
 
 | Area | Choice |
 | --- | --- |
-| Language | Go |
+| Language | Go 1.22+ |
 | Architecture | Modular monolith |
-| HTTP routing | chi on top of `net/http` |
-| Database | PostgreSQL |
-| Database access | sqlc with pgx |
-| Migrations | goose or golang-migrate |
-| Authentication | Session cookies, argon2id password hashing |
-| Object storage | S3-compatible provider; MinIO for local development |
-| Tests | Go `testing`, service unit tests, repository integration tests |
-| Quality gates | gofmt, golangci-lint, depguard, migration checks |
+| HTTP routing | P0 uses `net/http`; chi can be introduced when routes grow |
+| Database | PostgreSQL 16 with pgvector |
+| Cache / queue foundation | Redis 7 |
+| Object storage | S3-compatible storage; MinIO for local development |
+| Tests | Go `testing` |
+| Quality gates | `gofmt`, `go test ./...`, CI |
 
-## Planned Repository Structure
+## Repository Structure
 
 ```text
 learning-garden-server/
-|-- cmd/server/           # HTTP server entry point
+|-- .github/workflows/ci.yml
+|-- docker-compose.yml
+|-- Makefile
+|-- services/api/
+|   |-- cmd/server/       # HTTP server entry point
+|   `-- internal/httpserver/
 |-- internal/
 |   |-- identity/         # Users, sessions, auth
 |   |-- content/          # Concepts, papers, notes, markdown content
@@ -65,6 +96,7 @@ learning-garden-server/
 |-- migrations/           # Versioned database migrations
 |-- queries/              # SQL source files for sqlc
 |-- api/                  # REST contract documentation
+|-- synapse-dev-spec.html # Development spec
 `-- README.md
 ```
 
@@ -81,35 +113,102 @@ learning-garden-server/
 
 ## Environment Variables
 
-Expected local variables after the scaffold is added:
+Copy `.env.example` to `.env` for local overrides. Default P0 values are:
 
 ```bash
 HTTP_ADDR=:8080
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/learning_garden?sslmode=disable
-SESSION_SECRET=change-me-in-local-dev
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 
+POSTGRES_HOST_PORT=5432
+POSTGRES_DB=learning_garden
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/learning_garden?sslmode=disable
+
+REDIS_HOST_PORT=6380
+REDIS_ADDR=localhost:6380
+REDIS_URL=redis://localhost:6380/0
+
+MINIO_API_PORT=9000
+MINIO_CONSOLE_PORT=9001
 S3_ENDPOINT=http://localhost:9000
 S3_REGION=us-east-1
 S3_BUCKET=learning-garden-local
 S3_ACCESS_KEY_ID=minioadmin
 S3_SECRET_ACCESS_KEY=minioadmin
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=minioadmin
 ```
 
 Do not commit `.env` files. Commit `.env.example` when the scaffold introduces real environment requirements.
 
+## Local Infrastructure
+
+`docker compose up -d` starts:
+
+| Service | Image | Host port | Purpose |
+| --- | --- | --- | --- |
+| Postgres | `pgvector/pgvector:pg16` | `5432` | Primary relational database and vector extension baseline |
+| Redis | `redis:7-alpine` | `6380` | Session/cache/queue foundation |
+| MinIO | `minio/minio` | `9000`, `9001` | S3-compatible local object storage and console |
+
+Redis uses host port `6380` by default to avoid collisions with a locally installed Redis on `6379`. Change `REDIS_HOST_PORT` in `.env` if needed.
+
 ## Local Development
 
-Expected commands after the Go scaffold is added:
+Install Go 1.22 or newer, then start the API:
 
 ```bash
-go mod download
-go run ./cmd/server
-go test ./...
-golangci-lint run
+go run ./services/api/cmd/server
 ```
 
-Migration and sqlc commands will be finalized when the migration tool and sqlc configuration are committed.
+Start local dependencies:
+
+```bash
+docker compose up
+```
+
+Run checks:
+
+```bash
+go test ./...
+```
+
+Migration and sqlc commands will be finalized when the migration tool and sqlc configuration are committed. Until then, `make db:migrate` is a no-op placeholder.
+
+## Make Targets
+
+| Target | Command |
+| --- | --- |
+| `make dev` | Start the API server |
+| `make api:dev` | Start the API server |
+| `make db:migrate` | Migration placeholder for P0 |
+| `make fmt` | Fail if Go files need formatting |
+| `make test` | Run `go test ./...` |
+| `make ci` | Run formatting and tests |
+| `make infra:up` | Start local dependencies in detached mode |
+| `make infra:down` | Stop local dependencies |
+
+## API Endpoints
+
+P0 exposes one health endpoint:
+
+| Method | Path | Response |
+| --- | --- | --- |
+| `GET` | `/healthz` | `{"status":"ok"}` |
+
+Application endpoints will be added under `/api/v1`.
+
+## Frontend Development
+
+The landing page and frontend app are not part of this backend repository. To verify the P0 landing page acceptance item, use the dedicated frontend repository:
+
+```bash
+git clone https://github.com/Telran26512/learning-garden-web
+cd learning-garden-web
+pnpm install
+pnpm dev
+```
 
 ## API Contract
 
@@ -158,11 +257,19 @@ feat/content-crud
 feat/postgres-migrations
 ```
 
+## CI
+
+GitHub Actions runs on pushes to `main` and pull requests:
+
+- `gofmt` check for `services/api`.
+- `go test ./...`.
+
+Frontend typecheck/lint/build checks belong to `learning-garden-web`.
+
 ## Roadmap Entry Point
 
-Backend work starts with M0:
+After P0, backend work continues with:
 
-- Initialize Go module and HTTP server.
 - Add config loading and structured error handling.
 - Add PostgreSQL connection wiring.
 - Add migration tooling.
