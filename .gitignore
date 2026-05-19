@@ -9,6 +9,10 @@
 # Local agent workflow artifacts
 docs/superpowers/
 
+# Local development documents
+synapse-dev-spec.html
+index.html
+
 # Go build and test artifacts
 bin/
 *.test
