@@ -124,7 +124,7 @@ Copy `.env.example` to `.env` for local overrides. Default local values are:
 
 ```bash
 HTTP_ADDR=:18080
-CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001
 JWT_SECRET=change-me-in-local-env
 COOKIE_SECURE=false
 
