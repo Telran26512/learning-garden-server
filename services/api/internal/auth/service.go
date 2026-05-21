@@ -69,6 +69,7 @@ type CreateUserInput struct {
 type UserStore interface {
 	CreateUser(context.Context, CreateUserInput) (User, error)
 	FindByEmail(context.Context, string) (User, error)
+	FindByHandle(context.Context, string) (User, error)
 	FindByID(context.Context, string) (User, error)
 }
 
@@ -169,6 +170,10 @@ func (s *Service) AuthenticateAccessToken(ctx context.Context, accessToken strin
 		return User{}, err
 	}
 	return s.users.FindByID(ctx, claims.UserID)
+}
+
+func (s *Service) FindUserByHandle(ctx context.Context, handle string) (User, error) {
+	return s.users.FindByHandle(ctx, handle)
 }
 
 func (s *Service) newSession(ctx context.Context, user User) (Session, error) {

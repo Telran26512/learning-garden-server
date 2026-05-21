@@ -2,40 +2,80 @@ package httpapi
 
 import (
 	"encoding/json"
-	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Telran26512/learning-garden-server/services/api/internal/auth"
+	"github.com/Telran26512/learning-garden-server/services/api/internal/content"
 	"github.com/go-chi/chi/v5"
 )
 
-const refreshCookieName = "synapse_refresh"
+const (
+	refreshCookieName     = "synapse_refresh"
+	defaultRequestTimeout = 3 * time.Second
+)
 
 type NewRouterConfig struct {
 	Auth           *auth.Service
+	Content        *content.Service
 	AllowedOrigins []string
 	CookieSecure   bool
+	DBStats        func() DBPoolStats
+	Logger         *log.Logger
+	RequestTimeout time.Duration
 }
 
 func NewRouter(config NewRouterConfig) http.Handler {
+	logger := config.Logger
+	if logger == nil {
+		logger = log.Default()
+	}
+	requestTimeout := config.RequestTimeout
+	if requestTimeout == 0 {
+		requestTimeout = defaultRequestTimeout
+	}
+	metrics := newRouterMetrics(config.DBStats)
+
 	r := chi.NewRouter()
+	r.Use(requestIDMiddleware)
+	r.Use(accessLogMiddleware(logger))
+	r.Use(metrics.middleware)
+	r.Use(recoveryMiddleware(logger))
+	r.Use(requestTimeoutMiddleware(requestTimeout))
 	if len(config.AllowedOrigins) > 0 {
 		r.Use(corsMiddleware(config.AllowedOrigins))
 	}
 
 	handler := authHandler{service: config.Auth, cookieSecure: config.CookieSecure}
+	contentHandler := contentHandler{auth: config.Auth, content: config.Content}
 
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
+	r.Handle("/metrics", metrics.handler())
 	r.Post("/auth/register", handler.register)
 	r.Post("/auth/login", handler.login)
 	r.Post("/auth/refresh", handler.refresh)
 	r.Post("/auth/logout", handler.logout)
 	r.Get("/auth/me", handler.me)
 	r.Get("/auth/github", handler.github)
+
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/content", contentHandler.listContent)
+		r.Post("/content", contentHandler.createContent)
+		r.Get("/content/{id}", contentHandler.getContent)
+		r.Patch("/content/{id}", contentHandler.updateContent)
+		r.Delete("/content/{id}", contentHandler.deleteContent)
+		r.Post("/content/{id}/relations", contentHandler.addRelation)
+		r.Get("/content/{id}/backlinks", contentHandler.backlinks)
+		r.Get("/users/{handle}", contentHandler.publicProfile)
+		r.Get("/users/{handle}/content", contentHandler.userContent)
+		r.Get("/portfolio/{handle}", contentHandler.portfolio)
+		r.Get("/graph", contentHandler.graph)
+		r.Get("/community/feed", contentHandler.communityFeed)
+	})
 
 	return r
 }
@@ -52,7 +92,7 @@ func (h authHandler) register(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := h.service.Register(r.Context(), input)
 	if err != nil {
-		writeAuthError(w, err)
+		writeAppError(w, authAppError(err))
 		return
 	}
 	h.setRefreshCookie(w, session.RefreshToken)
@@ -66,7 +106,7 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	session, err := h.service.Login(r.Context(), input)
 	if err != nil {
-		writeAuthError(w, err)
+		writeAppError(w, authAppError(err))
 		return
 	}
 	h.setRefreshCookie(w, session.RefreshToken)
@@ -76,12 +116,12 @@ func (h authHandler) login(w http.ResponseWriter, r *http.Request) {
 func (h authHandler) refresh(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(refreshCookieName)
 	if err != nil || cookie.Value == "" {
-		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "refresh cookie is missing")
+		writeAppError(w, appError(http.StatusUnauthorized, "UNAUTHORIZED", "refresh cookie is missing"))
 		return
 	}
 	session, err := h.service.Refresh(r.Context(), cookie.Value)
 	if err != nil {
-		writeAuthError(w, err)
+		writeAppError(w, authAppError(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, session)
@@ -107,19 +147,19 @@ func (h authHandler) logout(w http.ResponseWriter, r *http.Request) {
 func (h authHandler) me(w http.ResponseWriter, r *http.Request) {
 	token := bearerToken(r.Header.Get("Authorization"))
 	if token == "" {
-		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "access token is missing")
+		writeAppError(w, appError(http.StatusUnauthorized, "UNAUTHORIZED", "access token is missing"))
 		return
 	}
 	user, err := h.service.AuthenticateAccessToken(r.Context(), token)
 	if err != nil {
-		writeAuthError(w, err)
+		writeAppError(w, authAppError(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, user)
 }
 
 func (h authHandler) github(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "OAUTH_NOT_CONFIGURED", "GitHub OAuth is not configured")
+	writeAppError(w, appError(http.StatusNotImplemented, "OAUTH_NOT_CONFIGURED", "GitHub OAuth is not configured"))
 }
 
 func (h authHandler) setRefreshCookie(w http.ResponseWriter, token string) {
@@ -147,21 +187,10 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body")
+		writeAppError(w, appError(http.StatusBadRequest, "BAD_REQUEST", "invalid JSON body"))
 		return false
 	}
 	return true
-}
-
-func writeAuthError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, auth.ErrEmailTaken), errors.Is(err, auth.ErrHandleTaken):
-		writeError(w, http.StatusConflict, "CONFLICT", err.Error())
-	case errors.Is(err, auth.ErrInvalidCredentials), errors.Is(err, auth.ErrRefreshRevoked), errors.Is(err, auth.ErrUnauthorized):
-		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", err.Error())
-	default:
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "internal server error")
-	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {
@@ -171,19 +200,6 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 		"data":  data,
 		"error": nil,
 		"meta":  map[string]any{},
-	})
-}
-
-func writeError(w http.ResponseWriter, status int, code string, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"data": nil,
-		"error": map[string]any{
-			"code":    code,
-			"message": message,
-		},
-		"meta": map[string]any{},
 	})
 }
 

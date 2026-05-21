@@ -1,0 +1,26 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        no-generic-repo-package:
+          files:
+            - "$all"
+          deny:
+            - pkg: "github.com/Telran26512/learning-garden-server/services/api/internal/repo"
+              desc: "generic repo package is removed; use authrepo or contentrepo adapters"
+        domain-packages-do-not-wire-adapters:
+          files:
+            - "services/api/internal/**/*.go"
+          deny:
+            - pkg: "github.com/Telran26512/learning-garden-server/services/api/internal/authrepo"
+              desc: "wire auth repositories from cmd/server, not from domain or HTTP packages"
+            - pkg: "github.com/Telran26512/learning-garden-server/services/api/internal/contentrepo"
+              desc: "wire content repositories from cmd/server, not from domain or HTTP packages"

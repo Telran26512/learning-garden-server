@@ -1,4 +1,4 @@
-package repo
+package authrepo
 
 import (
 	"context"
@@ -49,6 +49,19 @@ func (s *PostgresUserStore) FindByEmail(ctx context.Context, email string) (auth
 	user, err := scanUser(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return auth.User{}, auth.ErrInvalidCredentials
+	}
+	return user, err
+}
+
+func (s *PostgresUserStore) FindByHandle(ctx context.Context, handle string) (auth.User, error) {
+	row := s.db.QueryRow(ctx, `
+		SELECT id::text, email::text, password_hash, handle::text, display_name, role, status, created_at
+		FROM users
+		WHERE handle = $1 AND deleted_at IS NULL
+	`, handle)
+	user, err := scanUser(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return auth.User{}, auth.ErrUnauthorized
 	}
 	return user, err
 }

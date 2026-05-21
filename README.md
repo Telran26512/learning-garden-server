@@ -9,11 +9,13 @@ This repository owns the backend API scaffold, local infrastructure, persistence
 
 ## Current Status
 
-P0 is scaffolded and P1 identity/session work is in progress:
+P0/P1 are scaffolded and the first P2 backend slice is implemented:
 
 - `services/api` runs the Go API with `/healthz`.
 - P1 auth endpoints are implemented: register, login, refresh, logout, and current user.
+- P2 content endpoints are implemented for public browsing, owner CRUD, user profiles, portfolio aggregation, backlinks, graph data, and a content-derived community feed.
 - `users` migration and SQL query source files are present under `services/api/db`.
+- `content_items` and `content_relations` migrations are present under `services/api/db`.
 - `docker-compose.yml` starts Postgres with pgvector, Redis, and MinIO.
 - `Makefile` and GitHub Actions provide backend development and CI commands.
 - The landing page stays in the separate [`learning-garden-web`](https://github.com/Telran26512/learning-garden-web) repository.
@@ -205,7 +207,7 @@ make db:migrate
 
 ## API Endpoints
 
-P1 exposes these endpoints:
+P1 exposes these identity/session endpoints:
 
 | Method | Path | Response |
 | --- | --- | --- |
@@ -215,6 +217,23 @@ P1 exposes these endpoints:
 | `POST` | `/auth/refresh` | New access token using refresh cookie |
 | `POST` | `/auth/logout` | Revokes refresh token |
 | `GET` | `/auth/me` | Current user from Bearer access token |
+
+P2 exposes these content and public browsing endpoints under `/api/v1`:
+
+| Method | Path | Response |
+| --- | --- | --- |
+| `GET` | `/api/v1/content?kind=note` | Public content list filtered by optional kind |
+| `POST` | `/api/v1/content` | Owner-created track/note/paper/experiment |
+| `GET` | `/api/v1/content/{id}` | Public/unlisted item, or private item for its owner |
+| `PATCH` | `/api/v1/content/{id}` | Owner-only content update |
+| `DELETE` | `/api/v1/content/{id}` | Owner-only content delete |
+| `POST` | `/api/v1/content/{id}/relations` | Owner-only relation creation |
+| `GET` | `/api/v1/content/{id}/backlinks` | Public backlinks pointing at an item |
+| `GET` | `/api/v1/users/{handle}` | Public profile and public content stats |
+| `GET` | `/api/v1/users/{handle}/content` | Public content for a profile |
+| `GET` | `/api/v1/portfolio/{handle}` | Profile, grouped public content, graph, topics, and recent rows |
+| `GET` | `/api/v1/graph?handle={handle}` | Public graph nodes and edges |
+| `GET` | `/api/v1/community/feed` | Recent public content feed |
 
 ## Frontend Development
 
